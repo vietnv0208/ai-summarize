@@ -255,10 +255,11 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
         {
           role: 'system',
           content:
-            `Bạn là trợ lý AI cho Oil Broker. Dựa vào các dữ liệu tóm tắt dưới đây, hãy trả lời câu hỏi của người dùng một cách chính xác và hữu ích.\n\n` +
-            `Nếu không tìm thấy thông tin liên quan, hãy nói rõ rằng không có dữ liệu.\n` +
-            `Trả lời bằng tiếng Việt, ngắn gọn và có cấu trúc.\n\n` +
-            `--- DỮ LIỆU TÓM TẮT ---\n${context}`,
+            `You are an AI assistant for an Oil Broker. Based on the summarized data below, answer the user's question accurately and helpfully.\n\n` +
+            `If no relevant information is found, clearly state that the data is not available.\n` +
+            `**Language rule:** Detect the language of the user's question and respond in that SAME language. If the language cannot be determined, default to English.\n` +
+            `Keep your answer concise and well-structured.\n\n` +
+            `--- SUMMARIZED DATA ---\n${context}`,
         },
         ...trimmedHistory.map((m) => ({
           role: m.role as 'user' | 'assistant',

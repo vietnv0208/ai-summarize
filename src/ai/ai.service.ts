@@ -35,29 +35,29 @@ export class AiService {
     transcript: string,
     sourceName?: string,
   ): Promise<SummarizeResult> {
-    const systemPrompt = `Bạn là trợ lý AI chuyên nghiệp cho một Oil Broker. Nhiệm vụ của bạn là đọc đoạn hội thoại và:
+    const systemPrompt = `You are a professional AI assistant for an Oil Broker. Your task is to read the conversation and:
 
-1. **Tóm tắt** nội dung chính một cách ngắn gọn, rõ ràng, chuyên nghiệp. Nếu có nhiều chủ đề, liệt kê từng mục bằng gạch đầu dòng.
-2. **Trích xuất** các thông tin giao dịch nếu có (sản phẩm, số lượng, giá cả, điều kiện giao hàng, cảng...).
+1. **Summarize** the main content concisely, clearly, and professionally. If there are multiple topics, list each as a bullet point.
+2. **Extract** transaction details if present (product, quantity, price, delivery terms, port, etc.).
 
-Quy tắc:
-- TUYỆT ĐỐI không để lộ số điện thoại, email, hay tên công ty/cá nhân của người gửi trong bản tóm tắt.
-- Chỉ trả về thông tin đã được nhắc đến, không bịa thêm.
-- Trả lời bằng tiếng Việt hoặc tiếng Anh tùy theo ngôn ngữ chủ đạo của đoạn chat.
+Rules:
+- NEVER reveal phone numbers, emails, or company/personal names of the senders in the summary.
+- Only return information explicitly mentioned — do not invent or infer.
+- **Language rule:** Detect the dominant language of the conversation and respond in that SAME language. If the language cannot be clearly determined, default to English.
 
-Trả về kết quả dưới dạng JSON:
+Return the result as JSON:
 {
-  "summary": "Bản tóm tắt ngắn gọn...",
+  "summary": "Concise summary...",
   "entities": {
-    "product": "Loại sản phẩm nếu có",
-    "quantity": "Số lượng nếu có",
-    "price": "Giá cả nếu có",
-    "terms": "Điều kiện giao dịch nếu có (FOB, CIF...)",
-    "port": "Cảng giao hàng nếu có"
+    "product": "Product type if mentioned",
+    "quantity": "Quantity if mentioned",
+    "price": "Price if mentioned",
+    "terms": "Trading terms if mentioned (FOB, CIF...)",
+    "port": "Delivery port if mentioned"
   }
 }
 
-Nếu không có thông tin giao dịch, entities trả về object rỗng {}.`;
+If no transaction information is present, return an empty object for entities: {}.`;
 
     try {
       const response = await this.openai.chat.completions.create({
@@ -66,7 +66,7 @@ Nếu không có thông tin giao dịch, entities trả về object rỗng {}.`;
           { role: 'system', content: systemPrompt },
           {
             role: 'user',
-            content: `Nguồn: ${sourceName || 'Unknown'}\n\nĐoạn hội thoại:\n${transcript}`,
+            content: `Source: ${sourceName || 'Unknown'}\n\nConversation:\n${transcript}`,
           },
         ],
         response_format: { type: 'json_object' },
@@ -85,9 +85,9 @@ Nếu không có thông tin giao dịch, entities trả về object rỗng {}.`;
     } catch (error) {
       this.logger.error(`AI summarization failed: ${error}`);
 
-      // Fallback: Trả về placeholder nếu AI lỗi
+      // Fallback: return placeholder if AI fails
       return {
-        summary: `[AI Error] Không thể tóm tắt. Đoạn chat gồm ${transcript.split('\n').length} dòng.`,
+        summary: `[AI Error] Unable to summarize. The conversation has ${transcript.split('\n').length} lines.`,
         entities: {},
       };
     }
