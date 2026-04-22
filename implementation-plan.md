@@ -163,11 +163,12 @@ model Embedding {
   - Ngay sau khi lưu `MessageDigest` thành công.
   - NestJS gọi API của Telegram Bot để gửi `summary` vào Private Group của Broker.
   - Message format có thể đính kèm thông tin:
-    ```
     🟢 [Nguồn: Nhóm VIP Xăng Dầu]
     Tóm tắt: ...
     (Từ 5 tin nhắn - Lúc 14:30)
     ```
+  - Lệnh `/summarize` và `/summarize_today` cho phép chọn nguồn cụ thể từ danh sách các nguồn đang hoạt động bằng Inline Keyboard, hoặc chọn tất cả.
+  - Tóm tắt lấy *tất cả* các tin nhắn trong khoảng thời gian đã chọn, đảm bảo không bỏ sót thông tin quan trọng.
 
 ### Phase 5: Giao tiếp & Truy vấn tổng hợp (Q&A / RAG Layer)
 - **Mục đích:** Cho phép Broker hỏi các câu hỏi tổng hợp như *"Tóm tắt toàn bộ cuộc hội thoại của Group X tuần trước"*, *"Hôm qua có những deal Dầu thô nào?"*.
@@ -175,10 +176,14 @@ model Embedding {
 - **Công việc:**
   - **Tạo Embeddings:** Mỗi khi một `MessageDigest` (hoặc `RawMessage`) được lưu, hệ thống gọi API OpenAI Embeddings để biến đoạn text thành Vector và lưu vào Vector DB (kèm lưu log vào bảng `Embedding` ở Prisma).
   - **Quản lý ngữ cảnh (Memory):** Khi Broker chat với Telegram Bot, lưu lịch sử trò chuyện vào bảng `Conversation` để Bot nhớ được câu hỏi trước đó.
-  - **RAG (Retrieval-Augmented Generation):** Khi Broker đặt câu hỏi tổng hợp:
     1. Đọc lịch sử chat từ `Conversation`.
     2. Convert câu hỏi thành Vector.
     3. Query Vector DB để tìm ra Top K các `MessageDigest` hoặc `RawMessage` có nội dung liên quan nhất tới câu hỏi.
+  - **Trải nghiệm người dùng (UX):**
+    - Đăng ký sẵn Menu Lệnh (Commands Menu) với Telegram (`setMyCommands`).
+    - Hỗ trợ gõ `/ask` mà không cần kèm nội dung, hệ thống sẽ tự động chờ người dùng nhập câu hỏi (Conversational Flow).
+    - Hiển thị hiệu ứng `typing...` trong khi chờ AI xử lý (vốn tốn thời gian).
+    - Lệnh `/cancel` để thoát vòng lặp chờ nhập câu hỏi.
     4. Nhồi đống dữ liệu tìm được vào LLM Prompt: *"Dựa vào các dữ kiện sau, hãy trả lời câu hỏi của Broker:..."* và trả kết quả lại cho Broker.
 
 ---

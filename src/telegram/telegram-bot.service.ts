@@ -11,6 +11,9 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
   private bot: Telegraf;
   private isRunning = false;
 
+  // Trạng thái chờ nhập câu hỏi /ask
+  private waitingForAsk = new Set<number>();
+
   constructor(
     private readonly configService: ConfigService,
     private readonly digestService: DigestService,
@@ -44,6 +47,17 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
     // Assume it's running unless it fails
     this.isRunning = true;
     this.logger.log('🤖 Telegram Bot is running!');
+
+    // Register commands with Telegram
+    this.bot.telegram.setMyCommands([
+      { command: 'start', description: 'Start the bot' },
+      { command: 'sources', description: 'View monitored sources' },
+      { command: 'summarize', description: 'Summarize messages from the last 24h' },
+      { command: 'summarize_today', description: 'Summarize today\\'s messages' },
+      { command: 'stats', description: 'View system statistics' },
+      { command: 'ask', description: 'Ask a question about the collected data' },
+      { command: 'cancel', description: 'Cancel current operation' }
+    ]).catch(err => this.logger.error('Failed to register commands', err));
   }
 
   async onModuleDestroy() {
@@ -96,57 +110,111 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
 
     // /summarize - Tóm tắt 24h gần nhất
     this.bot.command('summarize', async (ctx) => {
-      ctx.reply('⏳ Summarizing messages from the last 24 hours...');
-
       try {
-        const result = await this.digestService.summarize({});
-
-        if (result.digestsCreated === 0) {
-          return ctx.reply('📭 No new messages to summarize.');
+        const sources = await this.prisma.source.findMany({ where: { isActive: true } });
+        if (sources.length === 0) {
+          return ctx.reply('📭 No active sources to summarize.');
         }
 
-        for (const digest of result.digests || []) {
-          const msg =
-            `🟢 **${digest.sourceName}**\n\n` +
-            `${digest.summary}\n\n` +
-            `_(${digest.messageCount} messages)_`;
+        const buttons = sources.map((s) =>
+          Markup.button.callback(s.name || s.externalId, `summarize_src_${s.id}`),
+        );
+        buttons.push(Markup.button.callback('🌟 All Sources', 'summarize_src_all'));
 
-          await ctx.reply(msg, { parse_mode: 'Markdown' });
-        }
+        ctx.reply(
+          'Select a source to summarize (last 24h):',
+          Markup.inlineKeyboard(buttons, { columns: 1 }),
+        );
       } catch (error) {
         this.logger.error('Error in /summarize:', error);
-        ctx.reply('❌ Error generating summary. Check server logs.');
+        ctx.reply('❌ Error fetching sources.');
       }
+    });
+
+    // Handle summarize callback queries
+    this.bot.action(/summarize_src_(.+)/, async (ctx) => {
+      const sourceId = ctx.match[1];
+      await ctx.answerCbQuery();
+      await ctx.editMessageText('⏳ Summarizing messages from the last 24 hours...');
+      
+      await this.withTyping(ctx, async () => {
+        try {
+          const dto = sourceId === 'all' ? {} : { sourceId };
+          const result = await this.digestService.summarize(dto);
+
+          if (result.digestsCreated === 0) {
+            return ctx.reply('📭 No new messages to summarize.');
+          }
+
+          for (const digest of result.digests || []) {
+            const msg =
+              `🟢 **${digest.sourceName}**\n\n` +
+              `${digest.summary}\n\n` +
+              `_(${digest.messageCount} messages)_`;
+
+            await ctx.reply(msg, { parse_mode: 'Markdown' });
+          }
+        } catch (error) {
+          this.logger.error('Error in summarize action:', error);
+          ctx.reply('❌ Error generating summary. Check server logs.');
+        }
+      });
     });
 
     // /summarize_today - Tóm tắt tin nhắn hôm nay
     this.bot.command('summarize_today', async (ctx) => {
-      ctx.reply('⏳ Summarizing today\'s messages...');
-
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-
       try {
-        const result = await this.digestService.summarize({
-          from: today.toISOString(),
-        });
-
-        if (result.digestsCreated === 0) {
-          return ctx.reply('📭 No new messages to summarize today.');
+        const sources = await this.prisma.source.findMany({ where: { isActive: true } });
+        if (sources.length === 0) {
+          return ctx.reply('📭 No active sources to summarize.');
         }
 
-        for (const digest of result.digests || []) {
-          const msg =
-            `🟢 **${digest.sourceName}**\n\n` +
-            `${digest.summary}\n\n` +
-            `_(${digest.messageCount} messages)_`;
+        const buttons = sources.map((s) =>
+          Markup.button.callback(s.name || s.externalId, `summarizetoday_src_${s.id}`),
+        );
+        buttons.push(Markup.button.callback('🌟 All Sources', 'summarizetoday_src_all'));
 
-          await ctx.reply(msg, { parse_mode: 'Markdown' });
-        }
+        ctx.reply(
+          'Select a source to summarize (today):',
+          Markup.inlineKeyboard(buttons, { columns: 1 }),
+        );
       } catch (error) {
         this.logger.error('Error in /summarize_today:', error);
-        ctx.reply('❌ Error generating summary. Check server logs.');
+        ctx.reply('❌ Error fetching sources.');
       }
+    });
+
+    // Handle summarize_today callback queries
+    this.bot.action(/summarizetoday_src_(.+)/, async (ctx) => {
+      const sourceId = ctx.match[1];
+      await ctx.answerCbQuery();
+      await ctx.editMessageText('⏳ Summarizing today\\'s messages...');
+      
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      await this.withTyping(ctx, async () => {
+        try {
+          const dto = sourceId === 'all' ? { from: today.toISOString() } : { sourceId, from: today.toISOString() };
+          const result = await this.digestService.summarize(dto);
+
+          if (result.digestsCreated === 0) {
+            return ctx.reply('📭 No new messages to summarize today.');
+          }
+
+          for (const digest of result.digests || []) {
+            const msg =
+              `🟢 **${digest.sourceName}**\n\n` +
+              `${digest.summary}\n\n` +
+              `_(${digest.messageCount} messages)_`;
+
+            await ctx.reply(msg, { parse_mode: 'Markdown' });
+          }
+        } catch (error) {
+          this.logger.error('Error in summarize_today action:', error);
+          ctx.reply('❌ Error generating summary. Check server logs.');
+        }
+      });
     });
 
     // /stats - Thống kê
@@ -178,17 +246,20 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
     this.bot.command('ask', async (ctx) => {
       const question = ctx.payload;
       if (!question) {
-        return ctx.reply('💡 Usage: /ask <question>\nExample: /ask Were there any crude oil deals yesterday?');
+        this.waitingForAsk.add(ctx.chat.id);
+        return ctx.reply('💡 Please enter your question about the collected data:');
       }
 
-      ctx.reply('🤔 Searching and analyzing...');
+      await this.processQuestion(ctx, question);
+    });
 
-      try {
-        const answer = await this.answerQuestion(question, ctx.chat.id.toString());
-        ctx.reply(answer, { parse_mode: 'Markdown' });
-      } catch (error) {
-        this.logger.error('Error in /ask:', error);
-        ctx.reply('❌ Error processing question.');
+    // /cancel - Hủy chờ nhập câu hỏi
+    this.bot.command('cancel', (ctx) => {
+      if (this.waitingForAsk.has(ctx.chat.id)) {
+        this.waitingForAsk.delete(ctx.chat.id);
+        ctx.reply('❌ Operation canceled.');
+      } else {
+        ctx.reply('Nothing to cancel.');
       }
     });
 
@@ -197,6 +268,12 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
       const text = ctx.message.text;
       const chatType = ctx.chat.type;
       const botUsername = ctx.botInfo?.username;
+
+      // Check if waiting for a question from this chat
+      if (this.waitingForAsk.has(ctx.chat.id)) {
+        this.waitingForAsk.delete(ctx.chat.id);
+        return this.processQuestion(ctx, text);
+      }
 
       // Trong group chat, chỉ phản hồi nếu bot được tag tên
       if (chatType === 'group' || chatType === 'supergroup') {
@@ -213,14 +290,49 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
       // Bỏ qua tin nhắn quá ngắn
       if (cleanText.length < 5) return;
 
-      ctx.reply('🤔 Analyzing your question...');
+      await this.processQuestion(ctx, cleanText);
+    });
+  }
 
+  /**
+   * Helper function to show typing indicator while processing long tasks.
+   */
+  private async withTyping<T>(ctx: any, action: () => Promise<T>): Promise<T> {
+    let interval: NodeJS.Timeout;
+    try {
+      await ctx.sendChatAction('typing').catch(() => {});
+      interval = setInterval(() => {
+        ctx.sendChatAction('typing').catch(() => {});
+      }, 4000); // Telegram typing action lasts ~5s
+      return await action();
+    } finally {
+      if (interval) clearInterval(interval);
+    }
+  }
+
+  /**
+   * Helper function to process Q&A
+   */
+  private async processQuestion(ctx: any, question: string) {
+    const msg = await ctx.reply('🤔 Searching and analyzing...');
+    await this.withTyping(ctx, async () => {
       try {
-        const answer = await this.answerQuestion(cleanText, ctx.chat.id.toString());
-        ctx.reply(answer, { parse_mode: 'Markdown' });
+        const answer = await this.answerQuestion(question, ctx.chat.id.toString());
+        await ctx.telegram.editMessageText(
+          ctx.chat.id,
+          msg.message_id,
+          undefined,
+          answer,
+          { parse_mode: 'Markdown' },
+        );
       } catch (error) {
         this.logger.error('Error processing question:', error);
-        ctx.reply('❌ Error processing question.');
+        await ctx.telegram.editMessageText(
+          ctx.chat.id,
+          msg.message_id,
+          undefined,
+          '❌ Error processing question.',
+        );
       }
     });
   }
