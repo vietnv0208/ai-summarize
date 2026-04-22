@@ -120,11 +120,27 @@ Sau mỗi phiên, kết quả tóm tắt tự động gửi tới `BROKER_CHAT_I
 4. Copy session string được in ra → paste vào `TELEGRAM_SESSION` trong `.env`
 5. Restart server, lần sau không cần login lại
 
-### 4. Lấy Chat ID
+### 4. Lấy Chat ID của Broker (nhận thông báo)
 1. Thêm bot vào group hoặc chat với bot
 2. Truy cập `https://api.telegram.org/bot<TOKEN>/getUpdates`
 3. Tìm `chat.id` trong response
 4. Paste vào `BROKER_CHAT_ID`
+
+### 5. Cấu hình lắng nghe chat (Group & Cá nhân)
+Để Bot tóm tắt tin nhắn, bạn cần chỉ định những đoạn chat nào sẽ được theo dõi.
+1. Mở Swagger UI tại: [http://localhost:3000/api/docs](http://localhost:3000/api/docs)
+2. Chạy API `GET /api/telegram/dialogs`. API sẽ trả về tối đa 50 cuộc hội thoại gần nhất (nhóm, channel, chat cá nhân).
+3. Lấy `id` của đoạn chat cần theo dõi.
+4. Chạy API `POST /api/sources` và dán `id` vừa copy vào trường `externalId`:
+```json
+{
+  "name": "Tên đoạn chat",
+  "platform": "telegram",
+  "externalId": "-10012345678",
+  "isActive": true
+}
+```
+Sau bước này, hệ thống sẽ tự động lắng nghe và lưu trữ tin nhắn từ nguồn này để tóm tắt.
 
 ## Cấu trúc Project
 
