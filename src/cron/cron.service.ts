@@ -1,12 +1,18 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { Cron } from '@nestjs/schedule';
+import { ConfigService } from '@nestjs/config';
 import { DigestService } from '../digest/digest.service';
+import { TelegramBotService } from '../telegram/telegram-bot.service';
 
 @Injectable()
 export class CronService {
   private readonly logger = new Logger(CronService.name);
 
-  constructor(private readonly digestService: DigestService) {}
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly digestService: DigestService,
+    private readonly telegramBot: TelegramBotService,
+  ) {}
 
   /**
    * Chốt phiên sáng: Tóm tắt tin nhắn từ 00:00 đến 12:00
@@ -28,9 +34,13 @@ export class CronService {
         from: from.toISOString(),
         to: to.toISOString(),
       });
+
       this.logger.log(
         `✅ Morning digest completed: ${result.digestsCreated} digests created`,
       );
+
+      // Gửi thông báo qua Telegram Bot
+      await this.notifyBroker(result);
     } catch (error) {
       this.logger.error('❌ Morning digest failed:', error);
     }
@@ -56,11 +66,32 @@ export class CronService {
         from: from.toISOString(),
         to: to.toISOString(),
       });
+
       this.logger.log(
         `✅ Afternoon digest completed: ${result.digestsCreated} digests created`,
       );
+
+      await this.notifyBroker(result);
     } catch (error) {
       this.logger.error('❌ Afternoon digest failed:', error);
+    }
+  }
+
+  /**
+   * Gửi kết quả tóm tắt tới Broker qua Telegram Bot
+   */
+  private async notifyBroker(result: any) {
+    const brokerChatId = this.configService.get<string>('BROKER_CHAT_ID');
+    if (!brokerChatId || result.digestsCreated === 0) return;
+
+    for (const digest of result.digests || []) {
+      const msg =
+        `📋 **Tóm tắt tự động**\n\n` +
+        `🟢 **${digest.sourceName}**\n\n` +
+        `${digest.summary}\n\n` +
+        `_(${digest.messageCount} tin nhắn)_`;
+
+      await this.telegramBot.sendNotification(brokerChatId, msg);
     }
   }
 }

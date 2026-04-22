@@ -29,6 +29,7 @@ async function bootstrap() {
     .addTag('Sources', 'Quản lý các nguồn lắng nghe (Telegram groups, WhatsApp chats)')
     .addTag('Messages', 'Xem tin nhắn thô đã thu thập và thống kê')
     .addTag('Digests', 'Kích hoạt tóm tắt và xem lịch sử tóm tắt')
+    .addTag('Telegram', 'Trạng thái kết nối Telegram Bot và Listener')
     .build();
 
   const document = SwaggerModule.createDocument(app, config);

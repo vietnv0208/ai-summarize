@@ -6,6 +6,7 @@ import { AiModule } from './ai/ai.module';
 import { SourceModule } from './source/source.module';
 import { DigestModule } from './digest/digest.module';
 import { MessageModule } from './message/message.module';
+import { TelegramModule } from './telegram/telegram.module';
 import { CronModule } from './cron/cron.module';
 
 @Module({
@@ -17,6 +18,7 @@ import { CronModule } from './cron/cron.module';
     SourceModule,
     DigestModule,
     MessageModule,
+    TelegramModule,
     CronModule,
   ],
 })
