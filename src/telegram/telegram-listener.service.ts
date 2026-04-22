@@ -180,4 +180,18 @@ export class TelegramListenerService implements OnModuleInit {
       clientReady: !!this.client,
     };
   }
+
+  async getDialogs(limit = 20) {
+    if (!this.isConnected || !this.client) {
+      throw new Error('Telegram client is not connected');
+    }
+    const dialogs = await this.client.getDialogs({ limit });
+    return dialogs.map((d) => ({
+      id: d.id?.toString(),
+      name: d.title || d.name,
+      isGroup: d.isGroup,
+      isChannel: d.isChannel,
+      isUser: d.isUser,
+    }));
+  }
 }

@@ -23,4 +23,21 @@ export class TelegramController {
       listener: this.listenerService.getConnectionStatus(),
     };
   }
+
+  @Get('dialogs')
+  @ApiOperation({
+    summary: 'Lấy danh sách các cuộc hội thoại Telegram',
+    description:
+      'Lấy ID của các group/user chat gần đây (dùng ID này làm externalId khi tạo Source).',
+  })
+  async getDialogs() {
+    try {
+      return await this.listenerService.getDialogs(50); // Lấy 50 chat gần nhất
+    } catch (error) {
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+  }
 }
