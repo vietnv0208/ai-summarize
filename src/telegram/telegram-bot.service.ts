@@ -33,18 +33,17 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
     this.setupCommands();
 
     // Launch in background — catch errors so a bad token doesn't crash the app
-    this.bot
-      .launch()
-      .then(() => {
-        this.isRunning = true;
-        this.logger.log('🤖 Telegram Bot is running!');
-      })
-      .catch((err: Error) => {
-        this.logger.error(
-          `❌ Telegram Bot failed to launch: ${err.message}. ` +
-            'Check that TELEGRAM_BOT_TOKEN is valid.',
-        );
-      });
+    this.bot.launch().catch((err: Error) => {
+      this.isRunning = false;
+      this.logger.error(
+        `❌ Telegram Bot failed to launch: ${err.message}. ` +
+          'Check that TELEGRAM_BOT_TOKEN is valid.',
+      );
+    });
+    
+    // Assume it's running unless it fails
+    this.isRunning = true;
+    this.logger.log('🤖 Telegram Bot is running!');
   }
 
   async onModuleDestroy() {
