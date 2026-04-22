@@ -1,12 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { AiService } from '../ai/ai.service';
 import { SummarizeRequestDto } from './dto/digest.dto';
 
 @Injectable()
 export class DigestService {
   private readonly logger = new Logger(DigestService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly aiService: AiService,
+  ) {}
 
   /**
    * Lấy tất cả các RawMessage chưa được digest trong khoảng thời gian,
@@ -14,7 +18,9 @@ export class DigestService {
    */
   async summarize(dto: SummarizeRequestDto) {
     const now = new Date();
-    const from = dto.from ? new Date(dto.from) : new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const from = dto.from
+      ? new Date(dto.from)
+      : new Date(now.getTime() - 24 * 60 * 60 * 1000);
     const to = dto.to ? new Date(dto.to) : now;
 
     // Lấy các tin nhắn chưa được tóm tắt (digestId = null) trong khoảng thời gian
@@ -55,8 +61,24 @@ export class DigestService {
         .map((m) => `[${m.actor?.name || 'Unknown'}]: ${m.content}`)
         .join('\n');
 
-      // TODO: Gọi AI API để tóm tắt (Phase 3 - sẽ implement sau)
-      const aiSummary = `[AI Summary Placeholder] ${messages.length} tin nhắn từ ${messages[0].source.name || sourceId}`;
+      const sourceName = messages[0].source.name || sourceId;
+
+      // Gọi AI để tóm tắt
+      let aiResult;
+      let status = 'success';
+      try {
+        aiResult = await this.aiService.summarizeConversation(
+          transcript,
+          sourceName,
+        );
+      } catch (error) {
+        this.logger.error(`AI summarization failed for source ${sourceId}:`, error);
+        aiResult = {
+          summary: `[AI Error] Không thể tóm tắt ${messages.length} tin nhắn từ ${sourceName}.`,
+          entities: {},
+        };
+        status = 'failed_ai';
+      }
 
       // Tạo digest record
       const digest = await this.prisma.messageDigest.create({
@@ -65,9 +87,9 @@ export class DigestService {
           timeFrom: messages[0].createdAt,
           timeTo: messages[messages.length - 1].createdAt,
           messageCount: messages.length,
-          summary: aiSummary,
-          entities: {},
-          status: 'success',
+          summary: aiResult.summary,
+          entities: aiResult.entities || {},
+          status,
         },
       });
 
@@ -78,15 +100,16 @@ export class DigestService {
       });
 
       this.logger.log(
-        `Created digest ${digest.id} for source ${sourceId} with ${messages.length} messages`,
+        `Created digest ${digest.id} for source "${sourceName}" with ${messages.length} messages`,
       );
 
       results.push({
         digestId: digest.id,
         sourceId,
-        sourceName: messages[0].source.name,
+        sourceName,
         messageCount: messages.length,
-        summary: aiSummary,
+        summary: aiResult.summary,
+        entities: aiResult.entities,
       });
     }
 
