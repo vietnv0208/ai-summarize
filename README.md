@@ -1,98 +1,142 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Oil Broker AI Assistant
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+Hệ thống AI tự động thu thập tin nhắn từ Telegram (group, chat cá nhân), tóm tắt bằng AI, và gửi kết quả về Telegram Bot cho Broker sử dụng.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## Kiến trúc
 
-## Description
-
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
-
-## Project setup
-
-```bash
-$ npm install
+```
+Telegram Groups/Chats ──(GramJS)──▶ NestJS Server ──▶ PostgreSQL (RawMessage)
+                                         │
+                                    ┌────▼─────┐
+                                    │  AI/LLM  │  (OpenAI gpt-4o-mini)
+                                    └────┬─────┘
+                                         │
+                                    MessageDigest (Summary + Entities)
+                                         │
+                              ┌──────────▼──────────┐
+                              │   Telegram Bot       │
+                              │   (Thông báo Broker) │
+                              │   (/ask Q&A)         │
+                              └──────────────────────┘
 ```
 
-## Compile and run the project
+## Tech Stack
+
+- **Backend:** NestJS + TypeScript (strict mode)
+- **Database:** PostgreSQL + Prisma ORM
+- **AI:** OpenAI SDK (gpt-4o-mini)
+- **Telegram Listener:** GramJS (telegram package) - đăng nhập bằng account user
+- **Telegram Bot:** Telegraf - gửi thông báo và nhận lệnh từ Broker
+- **API Docs:** Swagger UI tại `/api/docs`
+- **Scheduler:** @nestjs/schedule (Cron jobs)
+
+## Cài đặt
 
 ```bash
-# development
-$ npm run start
+# 1. Clone & install
+npm install
 
-# watch mode
-$ npm run start:dev
+# 2. Copy và cấu hình .env
+cp .env.example .env
+# Sửa file .env với các thông tin của bạn
 
-# production mode
-$ npm run start:prod
+# 3. Khởi tạo database
+npx prisma migrate dev --name init
+
+# 4. Chạy ứng dụng
+npm run start:dev
 ```
 
-## Run tests
+## Cấu hình (.env)
 
-```bash
-# unit tests
-$ npm run test
+| Biến | Mô tả |
+|------|--------|
+| `DATABASE_URL` | Connection string PostgreSQL |
+| `OPENAI_API_KEY` | API key của OpenAI |
+| `OPENAI_MODEL` | Model AI (mặc định: `gpt-4o-mini`) |
+| `TELEGRAM_BOT_TOKEN` | Token bot từ @BotFather |
+| `TELEGRAM_API_ID` | API ID từ https://my.telegram.org/apps |
+| `TELEGRAM_API_HASH` | API Hash từ https://my.telegram.org/apps |
+| `TELEGRAM_SESSION` | Session string (tự sinh sau lần login đầu) |
+| `BROKER_CHAT_ID` | Chat ID của Broker để nhận thông báo tự động |
 
-# e2e tests
-$ npm run test:e2e
+## API Endpoints
 
-# test coverage
-$ npm run test:cov
+### Sources - Quản lý nguồn lắng nghe
+- `POST /api/sources` - Thêm group/chat mới cần theo dõi
+- `GET /api/sources` - Liệt kê tất cả nguồn
+- `GET /api/sources/:id` - Chi tiết một nguồn
+- `PATCH /api/sources/:id` - Cập nhật (bật/tắt, đổi tên)
+- `DELETE /api/sources/:id` - Xóa nguồn
+
+### Messages - Xem tin nhắn thô
+- `GET /api/messages` - Liệt kê tin nhắn (filter: sourceId, undigested)
+- `GET /api/messages/stats` - Thống kê tổng quan
+
+### Digests - Tóm tắt
+- `POST /api/digests/summarize` - Kích hoạt tóm tắt on-demand
+- `GET /api/digests` - Liệt kê bản tóm tắt
+- `GET /api/digests/:id` - Chi tiết bản tóm tắt + tin nhắn gốc
+
+### Telegram - Trạng thái
+- `GET /api/telegram/status` - Kiểm tra kết nối bot & listener
+
+## Telegram Bot Commands
+
+| Lệnh | Mô tả |
+|-------|--------|
+| `/start` | Hiển thị menu lệnh |
+| `/sources` | Xem danh sách nguồn đang theo dõi |
+| `/summarize` | Tóm tắt tin nhắn 24h gần nhất |
+| `/summarize_today` | Tóm tắt tin nhắn hôm nay |
+| `/stats` | Thống kê hệ thống |
+| `/ask <câu hỏi>` | Hỏi AI về nội dung đã thu thập |
+
+Ngoài ra, gửi tin nhắn tự do bất kỳ cũng sẽ được AI trả lời dựa trên dữ liệu đã thu thập.
+
+## Cronjob tự động
+
+- **12:00 trưa** - Chốt phiên sáng (00:00 → 12:00)
+- **18:00 chiều** - Chốt phiên chiều (12:00 → 18:00)
+
+Sau mỗi phiên, kết quả tóm tắt tự động gửi tới `BROKER_CHAT_ID` qua Telegram Bot.
+
+## Hướng dẫn setup Telegram
+
+### 1. Tạo Bot (nhận thông báo)
+1. Chat với [@BotFather](https://t.me/BotFather) trên Telegram
+2. Gửi `/newbot`, đặt tên và username
+3. Copy token vào `TELEGRAM_BOT_TOKEN`
+
+### 2. Lấy API credentials (đọc tin nhắn)
+1. Truy cập https://my.telegram.org/apps
+2. Đăng nhập và tạo application
+3. Copy `api_id` → `TELEGRAM_API_ID` và `api_hash` → `TELEGRAM_API_HASH`
+
+### 3. Login lần đầu
+1. Chạy `npm run start:dev`
+2. Nhập số điện thoại khi được hỏi
+3. Nhập mã OTP
+4. Copy session string được in ra → paste vào `TELEGRAM_SESSION` trong `.env`
+5. Restart server, lần sau không cần login lại
+
+### 4. Lấy Chat ID
+1. Thêm bot vào group hoặc chat với bot
+2. Truy cập `https://api.telegram.org/bot<TOKEN>/getUpdates`
+3. Tìm `chat.id` trong response
+4. Paste vào `BROKER_CHAT_ID`
+
+## Cấu trúc Project
+
 ```
-
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+src/
+├── ai/              # AiService - OpenAI wrapper
+├── cron/            # CronService - Lịch tóm tắt tự động
+├── digest/          # DigestModule - Kích hoạt & xem tóm tắt
+├── message/         # MessageModule - Xem tin nhắn thô
+├── prisma/          # PrismaService - Kết nối database
+├── source/          # SourceModule - CRUD nguồn lắng nghe
+├── telegram/        # TelegramModule - Bot + Listener
+├── app.module.ts
+└── main.ts          # Swagger setup
 ```
-
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
-
-## Resources
-
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
