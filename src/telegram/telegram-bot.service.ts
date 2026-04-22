@@ -20,9 +20,11 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
 
   async onModuleInit() {
     const token = this.configService.get<string>('TELEGRAM_BOT_TOKEN');
-    if (!token) {
+
+    // Skip if token not set or still a placeholder
+    if (!token || token === 'your-bot-token-here') {
       this.logger.warn(
-        '⚠️ TELEGRAM_BOT_TOKEN not set. Telegram bot disabled.',
+        '⚠️  TELEGRAM_BOT_TOKEN not configured. Telegram bot disabled.',
       );
       return;
     }
@@ -30,11 +32,19 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
     this.bot = new Telegraf(token);
     this.setupCommands();
 
-    // Polling mode
-    this.bot.launch().then(() => {
-      this.isRunning = true;
-      this.logger.log('🤖 Telegram Bot is running!');
-    });
+    // Launch in background — catch errors so a bad token doesn't crash the app
+    this.bot
+      .launch()
+      .then(() => {
+        this.isRunning = true;
+        this.logger.log('🤖 Telegram Bot is running!');
+      })
+      .catch((err: Error) => {
+        this.logger.error(
+          `❌ Telegram Bot failed to launch: ${err.message}. ` +
+            'Check that TELEGRAM_BOT_TOKEN is valid.',
+        );
+      });
   }
 
   async onModuleDestroy() {

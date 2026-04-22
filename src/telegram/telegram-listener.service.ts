@@ -23,9 +23,15 @@ export class TelegramListenerService implements OnModuleInit {
     const sessionString =
       this.configService.get<string>('TELEGRAM_SESSION') || '';
 
-    if (!apiId || !apiHash) {
+    const PLACEHOLDERS = ['12345678', 'your-api-hash-here'];
+    if (
+      !apiId ||
+      !apiHash ||
+      PLACEHOLDERS.includes(String(apiId)) ||
+      PLACEHOLDERS.includes(apiHash)
+    ) {
       this.logger.warn(
-        '⚠️ TELEGRAM_API_ID or TELEGRAM_API_HASH not set. Telegram listener disabled.',
+        '⚠️  TELEGRAM_API_ID / TELEGRAM_API_HASH not configured. Telegram listener disabled.',
       );
       return;
     }
