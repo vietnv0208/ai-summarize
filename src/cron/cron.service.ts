@@ -15,6 +15,22 @@ export class CronService {
   ) {}
 
   /**
+   * Quét và gom các tin nhắn chưa xử lý thành khối hội thoại (MessageDigest)
+   * Chạy định kỳ mỗi phút
+   */
+  @Cron('* * * * *', { name: 'group-idle-messages' })
+  async groupIdleMessages() {
+    try {
+      const groupedCount = await this.digestService.groupIdleMessages();
+      if (groupedCount > 0) {
+        this.logger.log(`✅ Grouped messages for ${groupedCount} sources`);
+      }
+    } catch (error) {
+      this.logger.error('❌ Failed to group idle messages:', error);
+    }
+  }
+
+  /**
    * Chốt phiên sáng: Tóm tắt tin nhắn từ 00:00 đến 12:00
    * Chạy lúc 12:00 trưa hàng ngày
    */
@@ -88,8 +104,7 @@ export class CronService {
       const msg =
         `📋 **Automated Digest**\n\n` +
         `🟢 **${digest.sourceName}**\n\n` +
-        `${digest.summary}\n\n` +
-        `_(${digest.messageCount} messages)_`;
+        `${digest.summary}`;
 
       await this.telegramBot.sendNotification(brokerChatId, msg);
     }

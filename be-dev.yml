@@ -1,0 +1,26 @@
+version: "3.8"
+
+services:
+  ai-summary:
+    image: twendeesoft/project:ai-summary-latest-dev
+    container_name: ai-summary
+    mem_limit: 1024M
+    ports:
+      - "${APP_PORT:-3001}:${PORT:-3000}"  # Cho phép override port qua .env "HOST_PORT:CONTAINER_PORT"
+    pull_policy: always
+    volumes:
+      - /var/log/ai-summary/:/var/log/ai-summary/   # ✅ mount thư mục log thực cho service ai-summary
+
+    restart: on-failure
+    env_file:
+      - .env
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "10"
+
+    environment:
+      TZ: Asia/Ho_Chi_Minh                     # ✅ Set timezone here
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: ${PORT:-3000}

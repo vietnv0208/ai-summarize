@@ -40,4 +40,13 @@ export class TelegramController {
       };
     }
   }
+
+  @Get('register-commands')
+  @ApiOperation({
+    summary: 'Đăng ký các lệnh menu cho Telegram Bot',
+    description: 'Gọi API này để buộc Telegram cập nhật lại danh sách lệnh cho bot (xuất hiện nút Menu).',
+  })
+  async registerCommands() {
+    return this.botService.registerCommands();
+  }
 }

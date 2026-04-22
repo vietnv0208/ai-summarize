@@ -1,0 +1,16 @@
+version: "3.8"
+
+services:
+  ai-summary:
+    build: .
+    container_name: ai-summary-local
+    ports:
+      - "3001:3000"   # http://localhost:3001 -> PORT=3000 trong container
+    env_file:
+      - .env
+    restart: unless-stopped
+    volumes:
+      - /var/log/ai-summary-local/:/var/log/ai-summary/
+    environment:
+      TZ: Asia/Ho_Chi_Minh
+      NODE_ENV: development

@@ -13,8 +13,76 @@ export class DigestService {
   ) {}
 
   /**
-   * Lấy tất cả các RawMessage chưa được digest trong khoảng thời gian,
-   * nhóm theo sourceId, rồi gọi AI tóm tắt.
+   * Gom nhóm các tin nhắn chưa xử lý thành một MessageDigest
+   * Chạy định kỳ mỗi phút
+   */
+  async groupIdleMessages() {
+    // Lấy các tin nhắn chưa được gom nhóm
+    const pendingMessages = await this.prisma.rawMessage.findMany({
+      where: { digestId: null },
+      orderBy: { createdAt: 'asc' },
+      include: { actor: true, source: true },
+    });
+
+    if (pendingMessages.length === 0) return 0;
+
+    // Nhóm theo sourceId
+    const groupedBySource = new Map<string, typeof pendingMessages>();
+    for (const msg of pendingMessages) {
+      const group = groupedBySource.get(msg.sourceId) || [];
+      group.push(msg);
+      groupedBySource.set(msg.sourceId, group);
+    }
+
+    let digestsCreated = 0;
+    const now = new Date();
+
+    for (const [sourceId, messages] of groupedBySource) {
+      const source = messages[0].source;
+      const config = source.config as any;
+      const debounceSeconds = config?.debounceSeconds || 120; // Default 120s
+
+      const lastMessage = messages[messages.length - 1];
+      const diffSeconds = (now.getTime() - lastMessage.createdAt.getTime()) / 1000;
+
+      // Nếu đã quá thời gian debounce kể từ tin nhắn cuối cùng -> gộp nhóm
+      if (diffSeconds >= debounceSeconds) {
+        // Gom nội dung thành 1 khối text
+        const transcript = messages
+          .map((m) => `[${m.actor?.name || 'Unknown'}]: ${m.content}`)
+          .join('\n');
+
+        // Lưu vào MessageDigest (sử dụng trường summary để lưu text gộp)
+        const digest = await this.prisma.messageDigest.create({
+          data: {
+            sourceId,
+            timeFrom: messages[0].createdAt,
+            timeTo: lastMessage.createdAt,
+            messageCount: messages.length,
+            summary: transcript,
+            status: 'grouped',
+          },
+        });
+
+        // Cập nhật digestId cho các tin nhắn đã gộp
+        await this.prisma.rawMessage.updateMany({
+          where: { id: { in: messages.map((m) => m.id) } },
+          data: { digestId: digest.id },
+        });
+
+        this.logger.log(
+          `Grouped ${messages.length} messages into digest ${digest.id} for source "${source.name}"`,
+        );
+        digestsCreated++;
+      }
+    }
+
+    return digestsCreated;
+  }
+
+  /**
+   * Tóm tắt toàn bộ tin nhắn trong một khoảng thời gian
+   * Bao gồm các MessageDigest (khối tin nhắn đã gộp) và RawMessage (các tin nhắn lẻ tẻ mới)
    */
   async summarize(dto: SummarizeRequestDto) {
     const now = new Date();
@@ -23,93 +91,86 @@ export class DigestService {
       : new Date(now.getTime() - 24 * 60 * 60 * 1000);
     const to = dto.to ? new Date(dto.to) : now;
 
-    // Lấy tất cả các tin nhắn trong khoảng thời gian
-    const whereClause: any = {
-      createdAt: { gte: from, lte: to },
-    };
+    const whereClause: any = { isActive: true };
     if (dto.sourceId) {
-      whereClause.sourceId = dto.sourceId;
+      whereClause.id = dto.sourceId;
     }
 
-    const messagesToSummarize = await this.prisma.rawMessage.findMany({
-      where: whereClause,
-      orderBy: { createdAt: 'asc' },
-      include: { actor: true, source: true },
-    });
-
-    if (messagesToSummarize.length === 0) {
-      return {
-        message: 'No messages found in the specified time range.',
-        digestsCreated: 0,
-      };
-    }
-
-    // Nhóm tin nhắn theo sourceId
-    const groupedBySource = new Map<string, typeof messagesToSummarize>();
-    for (const msg of messagesToSummarize) {
-      const group = groupedBySource.get(msg.sourceId) || [];
-      group.push(msg);
-      groupedBySource.set(msg.sourceId, group);
-    }
-
+    const sources = await this.prisma.source.findMany({ where: whereClause });
     const results: any[] = [];
 
-    for (const [sourceId, messages] of groupedBySource) {
-      // Ghép text tin nhắn thành transcript
-      const transcript = messages
-        .map((m) => `[${m.actor?.name || 'Unknown'}]: ${m.content}`)
-        .join('\n');
+    for (const source of sources) {
+      // 1. Lấy các MessageDigest đã gộp trong thời gian này
+      const digests = await this.prisma.messageDigest.findMany({
+        where: {
+          sourceId: source.id,
+          timeFrom: { gte: from },
+          timeTo: { lte: to },
+        },
+        orderBy: { timeFrom: 'asc' },
+      });
 
-      const sourceName = messages[0].source.name || sourceId;
+      // 2. Lấy các tin nhắn lẻ tẻ chưa kịp gộp (digestId = null)
+      const rawMessages = await this.prisma.rawMessage.findMany({
+        where: {
+          sourceId: source.id,
+          digestId: null,
+          createdAt: { gte: from, lte: to },
+        },
+        orderBy: { createdAt: 'asc' },
+        include: { actor: true },
+      });
 
-      // Gọi AI để tóm tắt
-      let aiResult;
-      let status = 'success';
-      try {
-        aiResult = await this.aiService.summarizeConversation(
-          transcript,
-          sourceName,
-        );
-      } catch (error) {
-        this.logger.error(`AI summarization failed for source ${sourceId}:`, error);
-        aiResult = {
-          summary: `[AI Error] Could not summarize ${messages.length} messages from ${sourceName}.`,
-          entities: {},
-        };
-        status = 'failed_ai';
+      if (digests.length === 0 && rawMessages.length === 0) {
+        continue;
       }
 
-      // Tạo digest record
-      const digest = await this.prisma.messageDigest.create({
-        data: {
-          sourceId,
-          timeFrom: messages[0].createdAt,
-          timeTo: messages[messages.length - 1].createdAt,
-          messageCount: messages.length,
+      let transcriptParts: string[] = [];
+      let totalMessages = 0;
+
+      // Đưa các khối đã gộp vào trước
+      if (digests.length > 0) {
+        transcriptParts.push(...digests.map((d) => d.summary));
+        totalMessages += digests.reduce((sum, d) => sum + d.messageCount, 0);
+      }
+
+      // Đưa tin nhắn lẻ tẻ vào sau
+      if (rawMessages.length > 0) {
+        const rawTranscript = rawMessages
+          .map((m) => `[${m.actor?.name || 'Unknown'}]: ${m.content}`)
+          .join('\n');
+        transcriptParts.push(rawTranscript);
+        totalMessages += rawMessages.length;
+      }
+
+      const fullTranscript = transcriptParts.join('\n\n---\n\n');
+      const sourceName = source.name || source.id;
+
+      // Gọi AI để tóm tắt tổng thể
+      let aiResult;
+      try {
+        aiResult = await this.aiService.summarizeConversation(
+          fullTranscript,
+          sourceName,
+        );
+        
+        results.push({
+          sourceId: source.id,
+          sourceName,
+          messageCount: totalMessages,
           summary: aiResult.summary,
-          entities: aiResult.entities || {},
-          status,
-        },
-      });
-
-      // Cập nhật digestId cho các tin nhắn đã xử lý
-      await this.prisma.rawMessage.updateMany({
-        where: { id: { in: messages.map((m) => m.id) } },
-        data: { digestId: digest.id },
-      });
-
-      this.logger.log(
-        `Created digest ${digest.id} for source "${sourceName}" with ${messages.length} messages`,
-      );
-
-      results.push({
-        digestId: digest.id,
-        sourceId,
-        sourceName,
-        messageCount: messages.length,
-        summary: aiResult.summary,
-        entities: aiResult.entities,
-      });
+          entities: aiResult.entities,
+        });
+      } catch (error) {
+        this.logger.error(`AI summarization failed for source ${source.id}:`, error);
+        results.push({
+          sourceId: source.id,
+          sourceName,
+          messageCount: totalMessages,
+          summary: `[AI Error] Could not summarize messages.`,
+          entities: {},
+        });
+      }
     }
 
     return {
