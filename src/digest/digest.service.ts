@@ -23,31 +23,30 @@ export class DigestService {
       : new Date(now.getTime() - 24 * 60 * 60 * 1000);
     const to = dto.to ? new Date(dto.to) : now;
 
-    // Lấy các tin nhắn chưa được tóm tắt (digestId = null) trong khoảng thời gian
+    // Lấy tất cả các tin nhắn trong khoảng thời gian
     const whereClause: any = {
-      digestId: null,
       createdAt: { gte: from, lte: to },
     };
     if (dto.sourceId) {
       whereClause.sourceId = dto.sourceId;
     }
 
-    const undigestedMessages = await this.prisma.rawMessage.findMany({
+    const messagesToSummarize = await this.prisma.rawMessage.findMany({
       where: whereClause,
       orderBy: { createdAt: 'asc' },
       include: { actor: true, source: true },
     });
 
-    if (undigestedMessages.length === 0) {
+    if (messagesToSummarize.length === 0) {
       return {
-        message: 'Không có tin nhắn mới cần tóm tắt trong khoảng thời gian này.',
+        message: 'No messages found in the specified time range.',
         digestsCreated: 0,
       };
     }
 
     // Nhóm tin nhắn theo sourceId
-    const groupedBySource = new Map<string, typeof undigestedMessages>();
-    for (const msg of undigestedMessages) {
+    const groupedBySource = new Map<string, typeof messagesToSummarize>();
+    for (const msg of messagesToSummarize) {
       const group = groupedBySource.get(msg.sourceId) || [];
       group.push(msg);
       groupedBySource.set(msg.sourceId, group);
@@ -74,7 +73,7 @@ export class DigestService {
       } catch (error) {
         this.logger.error(`AI summarization failed for source ${sourceId}:`, error);
         aiResult = {
-          summary: `[AI Error] Không thể tóm tắt ${messages.length} tin nhắn từ ${sourceName}.`,
+          summary: `[AI Error] Could not summarize ${messages.length} messages from ${sourceName}.`,
           entities: {},
         };
         status = 'failed_ai';
@@ -114,7 +113,7 @@ export class DigestService {
     }
 
     return {
-      message: `Đã tóm tắt thành công ${results.length} nguồn.`,
+      message: `Successfully generated ${results.length} summaries.`,
       digestsCreated: results.length,
       digests: results,
     };
