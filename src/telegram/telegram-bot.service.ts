@@ -56,13 +56,13 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
     // /start - Welcome message
     this.bot.command('start', (ctx) => {
       ctx.reply(
-        '👋 Chào bạn! Tôi là Oil Broker AI Assistant.\n\n' +
-          'Các lệnh có sẵn:\n' +
-          '/sources - Xem danh sách nguồn đang theo dõi\n' +
-          '/summarize - Tóm tắt tin nhắn 24h gần nhất\n' +
-          '/summarize_today - Tóm tắt tin nhắn hôm nay\n' +
-          '/stats - Xem thống kê hệ thống\n' +
-          '/ask <câu hỏi> - Hỏi AI về nội dung đã thu thập\n',
+        '👋 Hello! I am your Oil Broker AI Assistant.\n\n' +
+          'Available commands:\n' +
+          '/sources - View monitored sources\n' +
+          '/summarize - Summarize messages from the last 24h\n' +
+          '/summarize_today - Summarize messages from today\n' +
+          '/stats - View system statistics\n' +
+          '/ask <question> - Ask AI about collected information\n',
       );
     });
 
@@ -77,50 +77,51 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
         });
 
         if (sources.length === 0) {
-          return ctx.reply('📭 Chưa có nguồn nào đang theo dõi.');
+          return ctx.reply('📭 No sources are currently being monitored.');
         }
 
-        const lines = sources.map(
-          (s, i) =>
-            `${i + 1}. **${s.name || s.externalId}** (${s.platform})\n` +
-            `   📨 ${s._count.messages} tin | 📋 ${s._count.digests} bản tóm tắt`,
-        );
+        let reply = '📡 **Monitored Sources:**\n\n';
+        for (const s of sources) {
+          reply +=
+            `🔹 **${s.name || s.externalId}** (${s.platform})\n` +
+            `   📨 ${s._count.messages} messages | 📋 ${s._count.digests} digests\n\n`;
+        }
 
-        ctx.reply(`📡 **Nguồn đang theo dõi:**\n\n${lines.join('\n\n')}`, {
-          parse_mode: 'Markdown',
-        });
+        ctx.reply(reply, { parse_mode: 'Markdown' });
       } catch (error) {
-        this.logger.error('Error in /sources:', error);
-        ctx.reply('❌ Lỗi khi lấy danh sách nguồn.');
+        this.logger.error('Error fetching sources:', error);
+        ctx.reply('❌ Error fetching sources.');
       }
     });
 
     // /summarize - Tóm tắt 24h gần nhất
     this.bot.command('summarize', async (ctx) => {
-      ctx.reply('⏳ Đang tóm tắt tin nhắn 24 giờ gần nhất...');
+      ctx.reply('⏳ Summarizing messages from the last 24 hours...');
 
       try {
         const result = await this.digestService.summarize({});
+
         if (result.digestsCreated === 0) {
-          return ctx.reply('📭 Không có tin nhắn mới cần tóm tắt.');
+          return ctx.reply('📭 No new messages to summarize.');
         }
 
         for (const digest of result.digests || []) {
           const msg =
             `🟢 **${digest.sourceName}**\n\n` +
             `${digest.summary}\n\n` +
-            `_(${digest.messageCount} tin nhắn)_`;
+            `_(${digest.messageCount} messages)_`;
+
           await ctx.reply(msg, { parse_mode: 'Markdown' });
         }
       } catch (error) {
         this.logger.error('Error in /summarize:', error);
-        ctx.reply('❌ Lỗi khi tóm tắt. Kiểm tra log server.');
+        ctx.reply('❌ Error generating summary. Check server logs.');
       }
     });
 
     // /summarize_today - Tóm tắt tin nhắn hôm nay
     this.bot.command('summarize_today', async (ctx) => {
-      ctx.reply('⏳ Đang tóm tắt tin nhắn hôm nay...');
+      ctx.reply('⏳ Summarizing today\'s messages...');
 
       const today = new Date();
       today.setHours(0, 0, 0, 0);
@@ -131,19 +132,20 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
         });
 
         if (result.digestsCreated === 0) {
-          return ctx.reply('📭 Hôm nay chưa có tin nhắn mới cần tóm tắt.');
+          return ctx.reply('📭 No new messages to summarize today.');
         }
 
         for (const digest of result.digests || []) {
           const msg =
             `🟢 **${digest.sourceName}**\n\n` +
             `${digest.summary}\n\n` +
-            `_(${digest.messageCount} tin nhắn)_`;
+            `_(${digest.messageCount} messages)_`;
+
           await ctx.reply(msg, { parse_mode: 'Markdown' });
         }
       } catch (error) {
         this.logger.error('Error in /summarize_today:', error);
-        ctx.reply('❌ Lỗi khi tóm tắt. Kiểm tra log server.');
+        ctx.reply('❌ Error generating summary. Check server logs.');
       }
     });
 
@@ -159,34 +161,34 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
           ]);
 
         ctx.reply(
-          `📊 **Thống kê hệ thống:**\n\n` +
-            `📡 Nguồn đang theo dõi: ${activeSources}\n` +
-            `📨 Tổng tin nhắn: ${totalMessages}\n` +
-            `📝 Chưa tóm tắt: ${undigested}\n` +
-            `📋 Bản tóm tắt: ${totalDigests}`,
+          `📊 **System Statistics:**\n\n` +
+            `📡 Monitored Sources: ${activeSources}\n` +
+            `📨 Total Messages: ${totalMessages}\n` +
+            `📝 Unsummarized: ${undigested}\n` +
+            `📋 Digests created: ${totalDigests}`,
           { parse_mode: 'Markdown' },
         );
       } catch (error) {
         this.logger.error('Error in /stats:', error);
-        ctx.reply('❌ Lỗi khi lấy thống kê.');
+        ctx.reply('❌ Error fetching statistics.');
       }
     });
 
-    // /ask <câu hỏi> - Q&A tổng hợp
+    // /ask - Trả lời câu hỏi
     this.bot.command('ask', async (ctx) => {
-      const question = ctx.message.text.replace('/ask', '').trim();
+      const question = ctx.payload;
       if (!question) {
-        return ctx.reply('💡 Sử dụng: /ask <câu hỏi>\nVí dụ: /ask Hôm qua có deal dầu thô nào?');
+        return ctx.reply('💡 Usage: /ask <question>\nExample: /ask Were there any crude oil deals yesterday?');
       }
 
-      ctx.reply('🤔 Đang tìm kiếm và phân tích...');
+      ctx.reply('🤔 Searching and analyzing...');
 
       try {
         const answer = await this.answerQuestion(question, ctx.chat.id.toString());
         ctx.reply(answer, { parse_mode: 'Markdown' });
       } catch (error) {
         this.logger.error('Error in /ask:', error);
-        ctx.reply('❌ Lỗi khi xử lý câu hỏi.');
+        ctx.reply('❌ Error processing question.');
       }
     });
 
@@ -211,14 +213,14 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
       // Bỏ qua tin nhắn quá ngắn
       if (cleanText.length < 5) return;
 
-      ctx.reply('🤔 Đang phân tích câu hỏi của bạn...');
+      ctx.reply('🤔 Analyzing your question...');
 
       try {
         const answer = await this.answerQuestion(cleanText, ctx.chat.id.toString());
         ctx.reply(answer, { parse_mode: 'Markdown' });
       } catch (error) {
         this.logger.error('Error processing question:', error);
-        ctx.reply('❌ Lỗi khi xử lý câu hỏi.');
+        ctx.reply('❌ Error processing question.');
       }
     });
   }
@@ -243,7 +245,7 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
     });
 
     if (recentDigests.length === 0) {
-      return '📭 Chưa có dữ liệu tóm tắt nào. Hãy chạy /summarize trước.';
+      return '📭 No digest data available yet. Please run /summarize first.';
     }
 
     // Tạo context từ các digest
@@ -295,7 +297,7 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
     });
 
     const answer =
-      response.choices[0]?.message?.content || 'Không có câu trả lời.';
+      response.choices[0]?.message?.content || 'No answer generated.';
 
     // Cập nhật conversation memory
     trimmedHistory.push({ role: 'assistant', content: answer });

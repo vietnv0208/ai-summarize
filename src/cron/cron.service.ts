@@ -86,10 +86,10 @@ export class CronService {
 
     for (const digest of result.digests || []) {
       const msg =
-        `📋 **Tóm tắt tự động**\n\n` +
+        `📋 **Automated Digest**\n\n` +
         `🟢 **${digest.sourceName}**\n\n` +
         `${digest.summary}\n\n` +
-        `_(${digest.messageCount} tin nhắn)_`;
+        `_(${digest.messageCount} messages)_`;
 
       await this.telegramBot.sendNotification(brokerChatId, msg);
     }
