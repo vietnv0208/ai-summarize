@@ -1,0 +1,111 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── CORE CONFIGURATION ────────────────────────────────────────────────────────
+
+/// Nguồn lắng nghe (Group Telegram, Group WhatsApp, hoặc Chat cá nhân)
+model Source {
+  id         String   @id @default(uuid())
+  platform   String // telegram | whatsapp
+  externalId String // ID của group/chat trên nền tảng (VD: chat_id)
+  name       String? // Tên gợi nhớ (VD: "Group Xăng Dầu Indo")
+  isActive   Boolean  @default(true)
+  config     Json? // Các setting riêng biệt cho source này
+  createdAt  DateTime @default(now())
+
+  actors   Actor[]
+  messages RawMessage[]
+  digests  MessageDigest[]
+
+  @@unique([platform, externalId])
+}
+
+/// Người gửi tin nhắn trong các Source (external users từ Telegram/WhatsApp)
+model Actor {
+  id         String   @id @default(uuid())
+  sourceId   String
+  externalId String // User ID trên Telegram/WhatsApp
+  name       String? // Tên hiển thị của người gửi
+  createdAt  DateTime @default(now())
+
+  source   Source       @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  messages RawMessage[]
+
+  @@unique([sourceId, externalId])
+}
+
+// ─── DATA MODULE ───────────────────────────────────────────────────────────────
+
+/// Tin nhắn thô bắt được từ các Source
+model RawMessage {
+  id          String   @id @default(uuid())
+  sourceId    String
+  actorId     String
+  externalId  String? // message_id gốc từ platform để chống duplicate
+  content     String   @db.Text
+  messageType String   @default("text") // text | photo | document
+  createdAt   DateTime @default(now()) // Timestamp gốc của tin nhắn
+
+  digestId String? // FK -> MessageDigest (null = chưa được tóm tắt)
+
+  source Source         @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  actor  Actor          @relation(fields: [actorId], references: [id], onDelete: Cascade)
+  digest MessageDigest? @relation(fields: [digestId], references: [id], onDelete: SetNull)
+
+  @@index([sourceId])
+  @@index([digestId])
+  @@index([createdAt])
+}
+
+/// Bản tóm tắt do AI tạo ra (1 Digest đại diện cho nhiều RawMessage)
+model MessageDigest {
+  id       String @id @default(uuid())
+  sourceId String
+
+  // Thời gian bắt đầu và kết thúc của chuỗi tin nhắn được tóm tắt
+  timeFrom DateTime
+  timeTo   DateTime
+
+  messageCount Int // Số lượng tin nhắn thô tạo nên bản tóm tắt này
+
+  summary String @db.Text // Nội dung tóm tắt gửi cho Broker
+
+  // Trích xuất Entity (JSON) để search/filter
+  entities Json? // { product, quantity, price, terms, ... }
+
+  status    String   @default("success") // success | failed_ai | pending
+  createdAt DateTime @default(now())
+
+  source   Source       @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  messages RawMessage[]
+
+  @@index([sourceId])
+  @@index([createdAt])
+}
+
+// ─── Q&A & RAG MODULE ──────────────────────────────────────────────────────────
+
+/// Lưu trữ context chat của Broker với Bot (conversation memory)
+model Conversation {
+  id        String   @id @default(uuid())
+  chatId    String   @unique // Telegram Chat ID của Broker
+  messages  Json // Lịch sử chat: [{role: 'user'|'assistant', content: string}]
+  updatedAt DateTime @updatedAt
+}
+
+/// Lưu trữ Vector Embeddings để search ngữ nghĩa (RAG)
+model Embedding {
+  id        String   @id @default(uuid())
+  refType   String // "raw_message" | "message_digest"
+  refId     String // ID của RawMessage hoặc MessageDigest
+  vectorId  String // ID của document trong Vector DB
+  createdAt DateTime @default(now())
+
+  @@unique([refType, refId])
+}
