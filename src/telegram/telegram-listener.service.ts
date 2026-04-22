@@ -18,7 +18,8 @@ export class TelegramListenerService implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
-    const apiId = this.configService.get<number>('TELEGRAM_API_ID');
+    const apiIdStr = this.configService.get<string>('TELEGRAM_API_ID');
+    const apiId = apiIdStr ? parseInt(apiIdStr, 10) : undefined;
     const apiHash = this.configService.get<string>('TELEGRAM_API_HASH');
     const sessionString =
       this.configService.get<string>('TELEGRAM_SESSION') || '';

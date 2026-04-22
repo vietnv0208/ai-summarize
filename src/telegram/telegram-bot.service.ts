@@ -194,13 +194,28 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
     // Xử lý tin nhắn tự do (không phải command) - cũng coi như câu hỏi
     this.bot.on('text', async (ctx) => {
       const text = ctx.message.text;
+      const chatType = ctx.chat.type;
+      const botUsername = ctx.botInfo?.username;
+
+      // Trong group chat, chỉ phản hồi nếu bot được tag tên
+      if (chatType === 'group' || chatType === 'supergroup') {
+        if (!botUsername || !text.includes(`@${botUsername}`)) {
+          return; // Bỏ qua nếu không được tag
+        }
+      }
+
+      // Xóa tag tên bot khỏi câu hỏi để tránh nhiễu AI
+      const cleanText = botUsername
+        ? text.replace(`@${botUsername}`, '').trim()
+        : text.trim();
+
       // Bỏ qua tin nhắn quá ngắn
-      if (text.length < 5) return;
+      if (cleanText.length < 5) return;
 
       ctx.reply('🤔 Đang phân tích câu hỏi của bạn...');
 
       try {
-        const answer = await this.answerQuestion(text, ctx.chat.id.toString());
+        const answer = await this.answerQuestion(cleanText, ctx.chat.id.toString());
         ctx.reply(answer, { parse_mode: 'Markdown' });
       } catch (error) {
         this.logger.error('Error processing question:', error);
