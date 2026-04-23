@@ -58,8 +58,7 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
   public async registerCommands() {
     const commands = [
       { command: 'sources', description: 'View monitored sources' },
-      { command: 'summarize', description: 'Summarize messages from the last 24h' },
-      { command: 'summarize_today', description: 'Summarize messages from today' },
+      { command: 'summarize', description: 'Summarize messages (choose time range)' },
       { command: 'stats', description: 'View system statistics' },
       { command: 'ask', description: 'Ask AI about collected information' },
     ];
@@ -109,8 +108,7 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
         '👋 Hello! I am your Oil Broker AI Assistant.\n\n' +
           'Available commands:\n' +
           '/sources - View monitored sources\n' +
-          '/summarize - Summarize messages from the last 24h\n' +
-          '/summarize_today - Summarize messages from today\n' +
+          '/summarize - Summarize messages (pick time range: 2h, 4h, 8h, 24h, 5d, 7d, 15d, 30d)\n' +
           '/stats - View system statistics\n' +
           '/ask <question> - Ask AI about collected information\n',
       );
@@ -144,56 +142,71 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
       }
     });
 
-    const handleSummarizeCommand = async (ctx: any, isToday: boolean) => {
+    // /summarize - Bước 1: Chọn khoảng thời gian
+    this.bot.command('summarize', async (ctx) => {
+      const timeRanges = [
+        ['2h', '4h', '8h', '24h'],
+        ['5d', '7d', '15d', '30d'],
+      ];
+
+      const buttons = timeRanges.map((row) =>
+        row.map((t) => Markup.button.callback(t, `stime_${t}`)),
+      );
+
+      ctx.reply('⏱ Select time range to summarize:', Markup.inlineKeyboard(buttons));
+    });
+
+    // Bước 2: Sau khi chọn thời gian → chọn source
+    this.bot.action(/^stime_(\d+[hd])$/, async (ctx) => {
+      await ctx.answerCbQuery();
+      const timeRange = ctx.match[1];
+
       try {
         const sources = await this.prisma.source.findMany({
           where: { isActive: true },
         });
 
         if (sources.length === 0) {
-          return ctx.reply('📭 No sources are currently being monitored.');
+          return ctx.editMessageText('📭 No sources are currently being monitored.');
         }
 
-        const timePrefix = isToday ? 'today' : '24h';
         const buttons = sources.map((s) => [
           Markup.button.callback(
             s.name || s.externalId,
-            `summarize_${timePrefix}_${s.id}`,
+            `sdo_${timeRange}_${s.id}`,
           ),
         ]);
-        buttons.push([
-          Markup.button.callback('All Sources', `summarize_${timePrefix}_all`),
-        ]);
+        buttons.push([Markup.button.callback('📡 All Sources', `sdo_${timeRange}_all`)]);
 
-        ctx.reply(
-          `Select a chat/group to summarize${isToday ? ' today' : ' (last 24h)'}:`,
-          Markup.inlineKeyboard(buttons),
+        ctx.editMessageText(
+          `🕐 Time: last *${timeRange}*\n\nSelect a source to summarize:`,
+          { parse_mode: 'Markdown', ...Markup.inlineKeyboard(buttons) },
         );
       } catch (error) {
-        this.logger.error('Error fetching sources for summarize:', error);
+        this.logger.error('Error fetching sources:', error);
         ctx.reply('❌ Error fetching sources.');
       }
-    };
+    });
 
-    // /summarize - Tóm tắt 24h gần nhất
-    this.bot.command('summarize', async (ctx) => handleSummarizeCommand(ctx, false));
-
-    // /summarize_today - Tóm tắt tin nhắn hôm nay
-    this.bot.command('summarize_today', async (ctx) => handleSummarizeCommand(ctx, true));
-
-    // Xử lý action chọn source để summarize
-    this.bot.action(/summarize_(today|24h)_(.+)/, async (ctx) => {
+    // Bước 3: Thực hiện tóm tắt
+    this.bot.action(/^sdo_(\d+[hd])_(.+)$/, async (ctx) => {
       await ctx.answerCbQuery();
       await ctx.sendChatAction('typing');
 
-      const timeRange = ctx.match[1]; // 'today' or '24h'
-      const targetId = ctx.match[2]; // 'all' or uuid
-
-      const isToday = timeRange === 'today';
+      const timeRange = ctx.match[1];
+      const targetId = ctx.match[2];
       const sourceId = targetId === 'all' ? undefined : targetId;
 
-      const statusMsg = await ctx.reply('⏳ Summarizing messages.');
+      // Tính `from` từ timeRange
+      const now = new Date();
+      const value = parseInt(timeRange.slice(0, -1), 10);
+      const unit = timeRange.slice(-1);
+      const msAgo = unit === 'h' ? value * 3_600_000 : value * 86_400_000;
+      const from = new Date(now.getTime() - msAgo).toISOString();
 
+      // Xóa message chọn source, hiện loading
+      try { await ctx.deleteMessage(); } catch (_) {}
+      const statusMsg = await ctx.reply('⏳ Summarizing messages.');
       const frames = [
         '⏳ Summarizing messages.',
         '⏳ Summarizing messages..',
@@ -213,29 +226,19 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
         } catch (_) {}
       }, 700);
 
-      let from: string | undefined;
-      if (isToday) {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        from = today.toISOString();
-      }
-
       try {
-        const result = await this.digestService.summarize({
-          from,
-          sourceId,
-        });
+        const result = await this.digestService.summarize({ from, sourceId });
 
         clearInterval(animInterval);
         await ctx.telegram.deleteMessage(statusMsg.chat.id, statusMsg.message_id);
 
         if (result.digestsCreated === 0) {
-          return ctx.reply('📭 No new messages to summarize.');
+          return ctx.reply('📭 No new messages to summarize in this period.');
         }
 
         for (const digest of result.digests || []) {
           await ctx.reply(
-            `🟢 **${digest.sourceName}**\n\n${digest.summary}`,
+            `🟢 *${digest.sourceName}* _(last ${timeRange})_\n\n${digest.summary}`,
             { parse_mode: 'Markdown' },
           );
         }
@@ -390,7 +393,7 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
           content:
             `You are an AI assistant for an Oil Broker. Based on the summarized data below, answer the user's question accurately and helpfully.\n\n` +
             `If no relevant information is found, clearly state that the data is not available.\n` +
-            `**Language rule:** Detect the language of the user's question and respond in that SAME language. If the language cannot be determined, base it on the language of the recent questions in the user's history, otherwise default to English.\n` +
+            `**Language rule:** Detect the language of the user's question and respond in that SAME language. If the language cannot be determined, respond in the language of the summarized data content.\n` +
             `Keep your answer concise and well-structured.\n\n` +
             `--- SUMMARIZED DATA ---\n${context}`,
         },
