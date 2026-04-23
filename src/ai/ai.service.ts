@@ -43,7 +43,7 @@ export class AiService {
 Rules:
 - NEVER reveal phone numbers, emails, or company/personal names of the senders in the summary.
 - Only return information explicitly mentioned — do not invent or infer.
-- **Language rule:** Detect the dominant language of the conversation and respond in that SAME language. If the language cannot be clearly determined, default to English.
+- **Language rule:** Detect the dominant language of the conversation and respond in that SAME language.
 
 Return the result as JSON:
 {
