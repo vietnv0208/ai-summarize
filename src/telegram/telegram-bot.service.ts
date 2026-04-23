@@ -105,7 +105,7 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
     // /start - Welcome message
     this.bot.command('start', (ctx) => {
       ctx.reply(
-        '👋 Hello! I am your Oil Broker AI Assistant.\n\n' +
+        '👋 Hello! I am your Summarize AI Assistant.\n\n' +
           'Available commands:\n' +
           '/sources - View monitored sources\n' +
           '/summarize - Summarize messages (pick time range: 2h, 4h, 8h, 24h, 5d, 7d, 15d, 30d)\n' +
@@ -315,6 +315,20 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
         ? text.replace(`@${botUsername}`, '').trim()
         : text.trim();
 
+      // Nếu chỉ tag bot mà không có nội dung → show danh sách lệnh
+      if (cleanText.length === 0) {
+        return ctx.reply(
+          '👋 Hello! I am your Summarize AI Assistant.\n\n' +
+          'Available commands:\n' +
+          '/sources - View monitored sources\n' +
+          '/summarize - Summarize messages (pick time range: 2h, 4h, 8h, 24h, 5d, 7d, 15d, 30d)\n' +
+          '/stats - View system statistics\n' +
+          '/ask <question> - Ask AI about collected information\n\n' +
+          '💡 Or just mention me with a question, e.g:\n' +
+          `@${botUsername || 'bot'} what is the latest oil price?`,
+        );
+      }
+
       // Bỏ qua tin nhắn quá ngắn
       if (cleanText.length < 5) return;
 
@@ -391,7 +405,7 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
         {
           role: 'system',
           content:
-            `You are an AI assistant for an Oil Broker. Based on the summarized data below, answer the user's question accurately and helpfully.\n\n` +
+            `You are an AI assistant for an Summarize. Based on the summarized data below, answer the user's question accurately and helpfully.\n\n` +
             `If no relevant information is found, clearly state that the data is not available.\n` +
             `**Language rule:** Detect the language of the user's question and respond in that SAME language. If the language cannot be determined, respond in the language of the summarized data content.\n` +
             `Keep your answer concise and well-structured.\n\n` +

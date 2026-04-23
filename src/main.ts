@@ -20,7 +20,7 @@ async function bootstrap() {
 
   // Swagger Setup
   const config = new DocumentBuilder()
-    .setTitle('Oil Broker AI Assistant')
+    .setTitle('Summarize AI Assistant')
     .setDescription(
       'API để quản lý nguồn lắng nghe (Sources), xem tin nhắn thô (RawMessages), ' +
         'kích hoạt tóm tắt (Digests), và truy vấn tổng hợp (Q&A).',

@@ -1,4 +1,4 @@
-# Oil Broker AI Assistant
+# Summarize AI Assistant
 
 Hệ thống AI tự động thu thập tin nhắn từ Telegram (group, chat cá nhân), tóm tắt bằng AI, và gửi kết quả về Telegram Bot cho Broker sử dụng.
 

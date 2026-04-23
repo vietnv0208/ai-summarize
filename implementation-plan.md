@@ -1,4 +1,4 @@
-# Kế hoạch Triển khai: Oil Broker AI Assistant (Personal)
+# Kế hoạch Triển khai: Summarize AI Assistant (Personal)
 
 ## 1. Tổng quan & Luồng hoạt động (Architecture & Flow)
 

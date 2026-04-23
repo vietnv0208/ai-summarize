@@ -35,7 +35,7 @@ export class AiService {
     transcript: string,
     sourceName?: string,
   ): Promise<SummarizeResult> {
-    const systemPrompt = `You are a professional AI assistant for an Oil Broker. Your task is to read the conversation and:
+    const systemPrompt = `You are a professional AI assistant for an Summarize. Your task is to read the conversation and:
 
 1. **Summarize** the main content concisely, clearly, and professionally. If there are multiple topics, list each as a bullet point.
 2. **Extract** transaction details if present (product, quantity, price, delivery terms, port, etc.).
